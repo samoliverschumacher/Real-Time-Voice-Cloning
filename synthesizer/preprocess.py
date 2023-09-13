@@ -1,4 +1,5 @@
 from multiprocessing.pool import Pool
+from typing import List
 from synthesizer import audio
 from functools import partial
 from itertools import chain
@@ -30,11 +31,20 @@ def preprocess_dataset(datasets_root: Path, out_dir: Path, n_processes: int, ski
     speaker_dirs = list(chain.from_iterable(input_dir.glob("*") for input_dir in input_dirs))
     func = partial(preprocess_speaker, out_dir=out_dir, skip_existing=skip_existing,
                    hparams=hparams, no_alignments=no_alignments)
-    job = Pool(n_processes).imap(func, speaker_dirs)
-    for speaker_metadata in tqdm(job, datasets_name, len(speaker_dirs), unit="speakers"):
-        for metadatum in speaker_metadata:
-            metadata_file.write("|".join(str(x) for x in metadatum) + "\n")
-    metadata_file.close()
+    
+    if n_processes == 1:
+        for speaker_dir in speaker_dirs:
+            speaker_metadata = func(speaker_dir)
+            for metadatum in speaker_metadata:
+                metadata_file.write("|".join(str(x) for x in metadatum) + "\n")
+        metadata_file.close()
+        
+    else:
+        job = Pool(n_processes).imap(func, speaker_dirs)
+        for speaker_metadata in tqdm(job, datasets_name, len(speaker_dirs), unit="speakers"):
+            for metadatum in speaker_metadata:
+                metadata_file.write("|".join(str(x) for x in metadatum) + "\n")
+        metadata_file.close()
 
     # Verify the contents of the metadata file
     with metadata_fpath.open("r", encoding="utf-8") as metadata_file:
@@ -62,7 +72,7 @@ def preprocess_speaker(speaker_dir, out_dir: Path, skip_existing: bool, hparams,
 
                 for wav_fpath in wav_fpaths:
                     # Load the audio waveform
-                    wav, _ = librosa.load(str(wav_fpath), hparams.sample_rate)
+                    wav, _ = librosa.load(str(wav_fpath), sr=hparams.sample_rate)
                     if hparams.rescale:
                         wav = wav / np.abs(wav).max() * hparams.rescaling_max
 
@@ -94,8 +104,13 @@ def preprocess_speaker(speaker_dir, out_dir: Path, skip_existing: bool, hparams,
 
             # Iterate over each entry in the alignments file
             for wav_fname, words, end_times in alignments:
-                wav_fpath = book_dir.joinpath(wav_fname + ".flac")
-                assert wav_fpath.exists()
+                extensions = [".wav", ".flac", ".mp3"]
+                # First audio file extension found will be assumed to match the alignments.
+                for extension in extensions:
+                    wav_fpath = book_dir.joinpath(wav_fname + extension)
+                    if wav_fpath.exists():
+                        break
+                assert wav_fpath.exists(), f"Could not find audio file for {wav_fname} with any of {extensions=}"
                 words = words.replace("\"", "").split(",")
                 end_times = list(map(float, end_times.replace("\"", "").split(",")))
 
@@ -111,7 +126,7 @@ def preprocess_speaker(speaker_dir, out_dir: Path, skip_existing: bool, hparams,
 
 def split_on_silences(wav_fpath, words, end_times, hparams):
     # Load the audio waveform
-    wav, _ = librosa.load(str(wav_fpath), hparams.sample_rate)
+    wav, _ = librosa.load(str(wav_fpath), sr=hparams.sample_rate)
     if hparams.rescale:
         wav = wav / np.abs(wav).max() * hparams.rescaling_max
 

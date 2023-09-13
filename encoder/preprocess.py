@@ -2,6 +2,7 @@ from datetime import datetime
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
+from typing import Optional, Tuple, Union
 
 import numpy as np
 from tqdm import tqdm
@@ -55,7 +56,8 @@ class DatasetLog:
         self.text_file.close()
 
 
-def _init_preprocess_dataset(dataset_name, datasets_root, out_dir) -> (Path, DatasetLog):
+def _init_preprocess_dataset(dataset_name, datasets_root: Path, out_dir) -> Union[Tuple[Path, DatasetLog],
+                                                                                  Tuple[None, None]]:
     dataset_root = datasets_root.joinpath(dataset_name)
     if not dataset_root.exists():
         print("Couldn\'t find %s, skipping this dataset." % dataset_root)
@@ -181,4 +183,28 @@ def preprocess_voxceleb2(datasets_root: Path, out_dir: Path, skip_existing=False
     # Get the speaker directories
     # Preprocess all speakers
     speaker_dirs = list(dataset_root.joinpath("dev", "aac").glob("*"))
+    _preprocess_speaker_dirs(speaker_dirs, dataset_name, datasets_root, out_dir, skip_existing, logger)
+
+
+def preprocess_allinthemind(datasets_root: Path, out_dir: Path, skip_existing=False):
+    
+    dataset_name = "AllInTheMind"
+    dataset_root, logger = _init_preprocess_dataset(dataset_name, datasets_root, out_dir)
+    if not dataset_root:
+        return
+    
+    speaker_dirs = []
+    for group_dir in dataset_root.glob('*'):
+        if not group_dir.is_dir():
+            print(f"Skipping {group_dir=}, - Its not a directory")
+            continue
+        speaker_dirs.extend(list(program_dir.glob("*")))
+            
+        
+            
+    # Each podcast has ~2 speakers in it. Combine into one list, to make use of Process Pool of 4
+    speaker_dirs = []
+    for program_dir in dataset_root.glob('*'):
+        speaker_dirs.extend(list(program_dir.glob("*")))
+    
     _preprocess_speaker_dirs(speaker_dirs, dataset_name, datasets_root, out_dir, skip_existing, logger)
