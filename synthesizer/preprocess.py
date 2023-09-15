@@ -215,6 +215,7 @@ def process_utterance(wav: np.ndarray, text: str, out_dir: Path, basename: str,
     mel_fpath = out_dir.joinpath("mels", "mel-%s.npy" % basename)
     wav_fpath = out_dir.joinpath("audio", "audio-%s.npy" % basename)
     if skip_existing and mel_fpath.exists() and wav_fpath.exists():
+        print(f"Skipping utterance {basename} - existing")
         return None
 
     # Trim silence
@@ -222,7 +223,9 @@ def process_utterance(wav: np.ndarray, text: str, out_dir: Path, basename: str,
         wav = encoder.preprocess_wav(wav, normalize=False, trim_silence=True)
 
     # Skip utterances that are too short
-    if len(wav) < hparams.utterance_min_duration * hparams.sample_rate:
+    wav_seconds = len(wav) / hparams.sample_rate
+    if wav_seconds < hparams.utterance_min_duration:
+        print(f"Skipping utterance {basename} -  too short")
         return None
 
     # Compute the mel spectrogram
@@ -231,6 +234,7 @@ def process_utterance(wav: np.ndarray, text: str, out_dir: Path, basename: str,
 
     # Skip utterances that are too long
     if mel_frames > hparams.max_mel_frames and hparams.clip_mels_length:
+        print(f"Skipping utterance {basename} -  too long. {mel_frames=} {wav_seconds=}")
         return None
 
     # Write the spectrogram, embed and audio to disk
@@ -247,6 +251,7 @@ def embed_utterance(fpaths, encoder_model_fpath):
 
     # Compute the speaker embedding of the utterance
     wav_fpath, embed_fpath = fpaths
+    print(f"files for embedding:\n\taudio data - {wav_fpath}\n\tembedding savepath - {embed_fpath}")
     wav = np.load(wav_fpath)
     wav = encoder.preprocess_wav(wav)
     embed = encoder.embed_utterance(wav)
@@ -264,6 +269,7 @@ def create_embeddings(synthesizer_root: Path, encoder_model_fpath: Path, n_proce
     with metadata_fpath.open("r") as metadata_file:
         metadata = [line.split("|") for line in metadata_file]
         fpaths = [(wav_dir.joinpath(m[0]), embed_dir.joinpath(m[2])) for m in metadata]
+    print(f"Found {len(fpaths)} metatdata")
 
     # TODO: improve on the multiprocessing, it's terrible. Disk I/O is the bottleneck here.
     # Embed the utterances in separate threads

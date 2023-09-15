@@ -1,4 +1,4 @@
-from encoder.preprocess import preprocess_librispeech, preprocess_voxceleb1, preprocess_voxceleb2
+from encoder.preprocess import preprocess_allinthemind, preprocess_librispeech, preprocess_voxceleb1, preprocess_voxceleb2
 from utils.argutils import print_args
 from pathlib import Path
 import argparse
@@ -55,15 +55,16 @@ if __name__ == "__main__":
     args.datasets = args.datasets.split(",")
     if not hasattr(args, "out_dir"):
         args.out_dir = args.datasets_root.joinpath("SV2TTS", "encoder")
-    assert args.datasets_root.exists()
+    assert args.datasets_root.exists(), f"file {args.datasets_root.resolve()} must exist"
     args.out_dir.mkdir(exist_ok=True, parents=True)
 
     # Preprocess the datasets
     print_args(args, parser)
     preprocess_func = {
-        "librispeech_other": preprocess_librispeech,
-        "voxceleb1": preprocess_voxceleb1,
-        "voxceleb2": preprocess_voxceleb2,
+        # "librispeech_other": preprocess_librispeech,
+        # "voxceleb1": preprocess_voxceleb1,
+        # "voxceleb2": preprocess_voxceleb2,
+        "AllInTheMind": preprocess_allinthemind
     }
     args = vars(args)
     for dataset in args.pop("datasets"):

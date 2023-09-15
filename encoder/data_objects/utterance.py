@@ -6,7 +6,10 @@ class Utterance:
         self.frames_fpath = frames_fpath
         self.wave_fpath = wave_fpath
         
+        # self.one_frame = np.load(frames_fpath)
+        
     def get_frames(self):
+        # return self.one_frame
         return np.load(self.frames_fpath)
 
     def random_partial(self, n_frames):

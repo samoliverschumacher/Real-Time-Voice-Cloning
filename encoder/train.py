@@ -4,9 +4,12 @@ import torch
 
 from encoder.data_objects import SpeakerVerificationDataLoader, SpeakerVerificationDataset
 from encoder.model import SpeakerEncoder
-from encoder.params_model import *
+from encoder.params_model import speakers_per_batch, utterances_per_speaker, learning_rate_init
 from encoder.visualizations import Visualizations
 from utils.profiler import Profiler
+
+
+num_GPU = torch.cuda.device_count()
 
 
 def sync(device: torch.device):
@@ -24,7 +27,7 @@ def train(run_id: str, clean_data_root: Path, models_dir: Path, umap_every: int,
         dataset,
         speakers_per_batch,
         utterances_per_speaker,
-        num_workers=4,
+        num_workers=4*num_GPU,
     )
 
     # Setup the device on which to run the forward pass and the loss. These can be different,
@@ -72,19 +75,20 @@ def train(run_id: str, clean_data_root: Path, models_dir: Path, umap_every: int,
         profiler.tick("Blocking, waiting for batch (threaded)")
 
         # Forward pass
-        inputs = torch.from_numpy(speaker_batch.data).to(device)
-        sync(device)
-        profiler.tick("Data to %s" % device)
-        embeds = model(inputs)
-        sync(device)
-        profiler.tick("Forward pass")
-        embeds_loss = embeds.view((speakers_per_batch, utterances_per_speaker, -1)).to(loss_device)
-        loss, eer = model.loss(embeds_loss)
-        sync(loss_device)
-        profiler.tick("Loss")
+        with torch.autocast(device_type=device_name):
+            inputs = torch.from_numpy(speaker_batch.data).to(device)
+            sync(device)
+            profiler.tick("Data to %s" % device)
+            embeds = model(inputs)
+            sync(device)
+            profiler.tick("Forward pass")
+            embeds_loss = embeds.view((speakers_per_batch, utterances_per_speaker, -1)).to(loss_device)
+            loss, eer = model.loss(embeds_loss)
+            sync(loss_device)
+            profiler.tick("Loss")
 
         # Backward pass
-        model.zero_grad()
+        model.zero_grad(set_to_none=True)
         loss.backward()
         profiler.tick("Backward pass")
         model.do_gradient_ops()

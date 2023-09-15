@@ -8,7 +8,7 @@ from pathlib import Path
 # TODO: improve with a pool of speakers for data efficiency
 
 class SpeakerVerificationDataset(Dataset):
-    def __init__(self, datasets_root: Path):
+    def __init__(self, datasets_root: Path, max_samples=1e10):
         self.root = datasets_root
         speaker_dirs = [f for f in self.root.glob("*") if f.is_dir()]
         if len(speaker_dirs) == 0:
@@ -16,9 +16,10 @@ class SpeakerVerificationDataset(Dataset):
                             "containing all preprocessed speaker directories.")
         self.speakers = [Speaker(speaker_dir) for speaker_dir in speaker_dirs]
         self.speaker_cycler = RandomCycler(self.speakers)
+        self.max_samples = max_samples
 
     def __len__(self):
-        return int(1e10)
+        return int(self.max_samples)
         
     def __getitem__(self, index):
         return next(self.speaker_cycler)
@@ -32,7 +33,7 @@ class SpeakerVerificationDataset(Dataset):
     
     
 class SpeakerVerificationDataLoader(DataLoader):
-    def __init__(self, dataset, speakers_per_batch, utterances_per_speaker, sampler=None, 
+    def __init__(self, dataset: Dataset, speakers_per_batch, utterances_per_speaker, sampler=None, 
                  batch_sampler=None, num_workers=0, pin_memory=False, timeout=0, 
                  worker_init_fn=None):
         self.utterances_per_speaker = utterances_per_speaker

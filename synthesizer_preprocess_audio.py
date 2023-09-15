@@ -5,6 +5,17 @@ from pathlib import Path
 import argparse
 
 
+preprocess_dataset(datasets_root=Path("/mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/datasets"),
+                   out_dir=Path("/mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/datasets/SV2TTS/synthesizer/"),
+                   datasets_name="AllInTheMind",
+                   hparams=hparams,
+                   no_alignments=False,
+                   n_processes=1,
+                   skip_existing=False,
+                   subfolders="2018")
+
+exit()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Preprocesses audio files from datasets, encodes them as mel spectrograms "

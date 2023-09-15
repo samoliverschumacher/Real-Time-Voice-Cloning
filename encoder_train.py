@@ -3,6 +3,8 @@ from encoder.train import train
 from pathlib import Path
 import argparse
 
+# TODO: add A CLI command to initialise the repo with inputs that are used across
+# each of the command line commands for encoder, synthesiser, vocoder.
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
