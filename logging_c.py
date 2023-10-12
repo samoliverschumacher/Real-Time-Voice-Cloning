@@ -1,40 +1,24 @@
+import multiprocessing
 import os
 import logging
 from logging.handlers import RotatingFileHandler
-from multiprocessing import Lock
 
 
-from datetime import datetime
 import logging
 from logging.config import fileConfig
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from threading import Event, Thread
 import psutil
 import time
 
 
 class BaseLogger:
-    """
-    The `BaseLogger` class is responsible for setting up a logger with a specified logfile and providing methods for logging messages.
-
-    Attributes:
-        - logfile: A string representing the path to the log file.
-        - logger: An instance of the `logging.Logger` class for logging messages.
-        - lock: A lock object for thread-safety when accessing the logger.
-
-    Methods:
-        - __init__(self, logfile): Initializes the `BaseLogger` instance with the given `logfile`. It sets up the logger with the `logfile` and a log handler that rotates the log file when it reaches a certain size. The logger's level is set to `logging.INFO`.
-        - set_worker_id(self, worker_id): Sets the `worker_id` attribute and updates the `logfile` with the worker ID. It also updates the log handler to use the updated `logfile`.
-        - log(self, message, level=logging.INFO): Logs a message with the specified level. If the `worker_id` attribute is set, it prefixes the message with the worker ID.
-        - close(self): Closes the log handler and clears the logger's handlers.
-
-    Note: This class relies on the `logging` module and the `Lock` class from the `threading` module.
-    """
     def __init__(self, logfile):
-        self.logfile = logfile
+        self.logfile = Path(logfile)
+        
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)  # Set the logger's level to INFO
-        self.lock = Lock()
 
         log_handler = RotatingFileHandler(logfile, maxBytes=1024 * 1024, backupCount=5)
         log_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
@@ -42,34 +26,52 @@ class BaseLogger:
 
     def set_worker_id(self, worker_id):
         self.worker_id = worker_id
-        self.logfile = f"{os.path.splitext(self.logfile)[0]}_{worker_id}{os.path.splitext(self.logfile)[1]}"
+        self.logfile = self.logfile.with_stem(f"{self.logfile.stem}_{worker_id}")
         log_handler = RotatingFileHandler(self.logfile, maxBytes=1024 * 1024, backupCount=5)
         log_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
         if self.logger.handlers:
-            handler = self.logger.handlers[0]
-            handler.close()
-            self.logger.handlers[0] = log_handler
+            for handler in self.logger.handlers:
+                handler.close()
+            self.logger.handlers.clear()
+            self.logger.addHandler(log_handler)
         else:
             self.logger.addHandler(log_handler)
         self.logger.info(f"Worker ID set: {worker_id}")
-        
-    def log(self, message, level=logging.INFO):
+
+    def log(self, msg, level=logging.INFO):
         if hasattr(self, 'worker_id'):
-            message = f'Worker {self.worker_id}: {message}'
-        with self.lock:
-            self.logger.log(level, message)
-            for handler in self.logger.handlers:
-                if isinstance(handler, logging.FileHandler):
-                    handler.flush()
-                    handler.close()
+            msg = f'Worker {self.worker_id}: {msg}'
+        self.logger.log(level, msg)
 
     def close(self):
-        with self.lock:
-            for handler in self.logger.handlers:
-                handler.close()
-                if isinstance(handler, logging.FileHandler):
-                    handler.close()
-            self.logger.handlers.clear()
+        for handler in self.logger.handlers:
+            handler.close()
+        self.logger.handlers.clear()
+
+
+def logger_context_manager(target, logger, args=(), kwargs={}, num_workers=1, master_logfile=None):
+    processes = []
+    log_files = []
+
+    if master_logfile is None:
+        master_logfile = Path('log.txt')
+
+    for worker_id in range(num_workers):
+        logfile = master_logfile.with_stem(f"{master_logfile.stem}_{worker_id}")
+        log_files.append(logfile)
+
+        kwargs['logger'] = logger
+        kwargs['worker_id'] = worker_id
+        process = multiprocessing.Process(target=target, args=args, kwargs=kwargs)
+        processes.append(process)
+
+    for process in processes:
+        process.start()
+
+    for process in processes:
+        process.join()
+
+    return log_files
 
 
 def aggregate_logs(log_files, output_file):
@@ -137,36 +139,37 @@ class MetricsCapturer:
             cls._instance = super(MetricsCapturer, cls).__new__(cls)
         return cls._instance
     
-    def __init__(self, logger):
+    def __init__(self, logger, period=5):
         self.logger: logging.Logger = logger
-        self.measure_performance = True
-        self.metrics_thread = None
         
-        self.stop_event = Event()
+        self._measure_performance = True
+        self._metrics_thread = None
+        self._period = period
+        self._stop_event = Event()
 
     def run(self):
-        while not self.stop_event.is_set():
+        while not self._stop_event.is_set():
             cpu_percent = psutil.cpu_percent(interval=1)
             memory_info = psutil.virtual_memory()
             disk_io_counters = psutil.disk_io_counters()
 
-            self.logger.log(logging.INFO, f'CPU Usage: {cpu_percent}%')
-            self.logger.log(logging.INFO, f'Memory Usage: {memory_info.percent}%')
-            self.logger.log(logging.INFO, f'Disk I/O (Reads: {disk_io_counters.read_count}, Writes: {disk_io_counters.write_count})')
+            self.logger.log(msg=f'CPU Usage: {cpu_percent}%', level=logging.INFO)
+            self.logger.log(msg=f'Memory Usage: {memory_info.percent}%', level=logging.INFO)
+            self.logger.log(msg=f'Disk I/O (Reads: {disk_io_counters.read_count}, Writes: {disk_io_counters.write_count})', level=logging.INFO)
             
-            self.stop_event.wait(5)
+            self._stop_event.wait(self._period)
 
     def start(self):
-        if not self.metrics_thread or not self.metrics_thread.is_alive():
-            self.measure_performance = True
-            self.metrics_thread = Thread(target=self.run)
-            self.metrics_thread.daemon = True
-            self.metrics_thread.start()
+        if not self._metrics_thread or not self._metrics_thread.is_alive():
+            self._measure_performance = True
+            self._metrics_thread = Thread(target=self.run)
+            self._metrics_thread.daemon = True
+            self._metrics_thread.start()
 
     def stop(self):
-        self.stop_event.set()
-        if self.metrics_thread:
-            self.metrics_thread.join()
+        self._stop_event.set()
+        if self._metrics_thread:
+            self._metrics_thread.join()
 
 
 
