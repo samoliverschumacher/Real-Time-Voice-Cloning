@@ -1,5 +1,7 @@
+import logging
 from multiprocessing.pool import Pool
-from typing import List
+from typing import List, Optional
+from logging_c import BaseLogger, MetricsCapturer
 from synthesizer import audio
 from functools import partial
 from itertools import chain
@@ -225,7 +227,7 @@ def process_utterance(wav: np.ndarray, text: str, out_dir: Path, basename: str,
     # Skip utterances that are too short
     wav_seconds = len(wav) / hparams.sample_rate
     if wav_seconds < hparams.utterance_min_duration:
-        print(f"Skipping utterance {basename} -  too short")
+        print(f"Skipping utterance {basename} -  too short. {wav_seconds=}")
         return None
 
     # Compute the mel spectrogram
@@ -245,20 +247,30 @@ def process_utterance(wav: np.ndarray, text: str, out_dir: Path, basename: str,
     return wav_fpath.name, mel_fpath.name, "embed-%s.npy" % basename, len(wav), mel_frames, text
 
 
-def embed_utterance(fpaths, encoder_model_fpath):
+def embed_utterance(fpaths, encoder_model_fpath, logger: Optional[BaseLogger]):
+    wav_fpath, embed_fpath = fpaths
+    
+    if logger: 
+        worker_id = Path(wav_fpath).stem
+        logger.set_worker_id(worker_id)
+        
     if not encoder.is_loaded():
         encoder.load_model(encoder_model_fpath)
 
     # Compute the speaker embedding of the utterance
-    wav_fpath, embed_fpath = fpaths
-    print(f"files for embedding:\n\taudio data - {wav_fpath}\n\tembedding savepath - {embed_fpath}")
+    if logger: logger.log(f"files for embedding:\n\taudio data - {wav_fpath}\n\tembedding savepath - {embed_fpath}")
     wav = np.load(wav_fpath)
-    wav = encoder.preprocess_wav(wav)
-    embed = encoder.embed_utterance(wav)
+    wav = encoder.preprocess_wav(wav, logger=logger)
+    embed = encoder.embed_utterance(wav, logger=logger)
+    if logger: logger.log("saving embedding")
     np.save(embed_fpath, embed, allow_pickle=False)
+    if logger: logger.log("Saved embedding")
 
 
 def create_embeddings(synthesizer_root: Path, encoder_model_fpath: Path, n_processes: int):
+    log_path = (synthesizer_root / 'logs'/ 'create_embeddings.log')
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logger = BaseLogger(log_path)
     wav_dir = synthesizer_root.joinpath("audio")
     metadata_fpath = synthesizer_root.joinpath("train.txt")
     assert wav_dir.exists() and metadata_fpath.exists()
@@ -269,11 +281,23 @@ def create_embeddings(synthesizer_root: Path, encoder_model_fpath: Path, n_proce
     with metadata_fpath.open("r") as metadata_file:
         metadata = [line.split("|") for line in metadata_file]
         fpaths = [(wav_dir.joinpath(m[0]), embed_dir.joinpath(m[2])) for m in metadata]
-    print(f"Found {len(fpaths)} metatdata")
+    logger.log(f"Found {len(fpaths)} metadata")
 
     # TODO: improve on the multiprocessing, it's terrible. Disk I/O is the bottleneck here.
     # Embed the utterances in separate threads
-    func = partial(embed_utterance, encoder_model_fpath=encoder_model_fpath)
+    performance_logging = MetricsCapturer(logger=logger, period=5)
+    performance_logging.start()
+    func = partial(embed_utterance, encoder_model_fpath=encoder_model_fpath, logger=logger)
+    if n_processes > 2:
+        logger.log(f"{n_processes=} is too many, will be set to 2.")
+        n_processes = 2
     job = Pool(n_processes).imap(func, fpaths)
     list(tqdm(job, "Embedding", len(fpaths), unit="utterances"))
+    # with Pool(n_processes) as p:
+    #     list(p.imap(func, fpaths))
+    # job = Pool(n_processes).imap(func, fpaths)
+    # with Pool(n_processes) as p:
+    #     list(tqdm(p.imap(func, fpaths), "Embedding", len(fpaths), unit="utterances"))
+        
+    performance_logging.stop()
 

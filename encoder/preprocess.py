@@ -208,3 +208,25 @@ def preprocess_allinthemind(datasets_root: Path, out_dir: Path, skip_existing=Fa
         speaker_dirs.extend(list(program_dir.glob("*")))
     
     _preprocess_speaker_dirs(speaker_dirs, dataset_name, datasets_root, out_dir, skip_existing, logger)
+
+
+def preprocess_lynnemalcolm(datasets_root: Path, out_dir: Path, skip_existing=False):
+    
+    dataset_name = "lynnemalcolm"
+    dataset_root, logger = _init_preprocess_dataset(dataset_name, datasets_root, out_dir)
+    if not dataset_root:
+        return
+    
+    speaker_dirs = []
+    for group_dir in dataset_root.glob('*'):
+        if not group_dir.is_dir():
+            print(f"Skipping {group_dir=}, - Its not a directory")
+            continue
+        speaker_dirs.extend(list(group_dir.glob("*")))  # in groups are speaker names
+                   
+    # Each podcast has ~2 speakers in it. Combine into one list, to make use of Process Pool of 4
+    speaker_dirs = []
+    for program_dir in dataset_root.glob('*'):
+        speaker_dirs.extend(list(program_dir.glob("*")))
+    
+    _preprocess_speaker_dirs(speaker_dirs, dataset_name, datasets_root, out_dir, skip_existing, logger)

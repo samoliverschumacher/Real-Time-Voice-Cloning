@@ -7,12 +7,12 @@ import argparse
 
 preprocess_dataset(datasets_root=Path("/mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/datasets"),
                    out_dir=Path("/mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/datasets/SV2TTS/synthesizer/"),
-                   datasets_name="AllInTheMind",
+                   datasets_name="lynnemalcolm",
                    hparams=hparams,
                    no_alignments=False,
                    n_processes=1,
                    skip_existing=False,
-                   subfolders="2018")
+                   subfolders="2018,2020")
 
 exit()
 

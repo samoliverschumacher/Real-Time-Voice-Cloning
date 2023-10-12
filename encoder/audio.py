@@ -7,6 +7,8 @@ import numpy as np
 import librosa
 import struct
 
+from logging_c import BaseLogger
+
 try:
     import webrtcvad
 except:
@@ -19,7 +21,8 @@ int16_max = (2 ** 15) - 1
 def preprocess_wav(fpath_or_wav: Union[str, Path, np.ndarray],
                    source_sr: Optional[int] = None,
                    normalize: Optional[bool] = True,
-                   trim_silence: Optional[bool] = True):
+                   trim_silence: Optional[bool] = True,
+                   logger: Optional[BaseLogger] = None):
     """
     Applies the preprocessing operations used in training the Speaker Encoder to a waveform 
     either on disk or in memory. The waveform will be resampled to match the data hyperparameters.
@@ -31,20 +34,23 @@ def preprocess_wav(fpath_or_wav: Union[str, Path, np.ndarray],
     hyperparameters. If passing a filepath, the sampling rate will be automatically detected and 
     this argument will be ignored.
     """
+    if logger: logger.log("loading wav from disk")
     # Load the wav from disk if needed
     if isinstance(fpath_or_wav, str) or isinstance(fpath_or_wav, Path):
         wav, source_sr = librosa.load(str(fpath_or_wav), sr=None)
     else:
         wav = fpath_or_wav
-    
+    if logger: logger.log("Resample the wav")
     # Resample the wav if needed
     if source_sr is not None and source_sr != sampling_rate:
         wav = librosa.resample(wav, source_sr, sampling_rate)
         
     # Apply the preprocessing: normalize volume and shorten long silences 
     if normalize:
+        if logger: logger.log("normalize volume")
         wav = normalize_volume(wav, audio_norm_target_dBFS, increase_only=True)
     if webrtcvad and trim_silence:
+        if logger: logger.log("shorten long silences")
         wav = trim_long_silences(wav)
     
     return wav

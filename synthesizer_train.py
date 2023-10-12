@@ -5,6 +5,7 @@ from synthesizer.train import train
 from utils.argutils import print_args
 import argparse
 
+# python synthesizer_train.py lm /mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/datasets/SV2TTS/synthesizer -m ./saved_models -s 300 -b 900
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

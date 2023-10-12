@@ -2,8 +2,9 @@ import multiprocessing
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
-from logging_c import BaseLogger, MetricsCapturer, aggregate_logs
+from logging_c import BaseLogger, MetricsCapturer, aggregate_logs, logger_context_manager
 import unittest
 from unittest.mock import patch, MagicMock, call
 import logging
@@ -105,7 +106,6 @@ class TestMetricsCapturer(unittest.TestCase):
         self.assertEqual(len(os.listdir()), 1)
         
         
-
 class LogTestCase(unittest.TestCase):
     def setUp(self):
         # Create a temporary directory for testing
@@ -135,7 +135,7 @@ class LogTestCase(unittest.TestCase):
         # Assert that the log file is not empty
         with open(logfile, 'r') as f:
             log_contents = f.read()
-            print(f"{log_contents=}")
+            # print(f"{log_contents=}")
             self.assertNotEqual(log_contents, '')
 
         # Close the logger
@@ -143,7 +143,7 @@ class LogTestCase(unittest.TestCase):
 
     def test_worker_id_set(self):
         # Create a BaseLogger instance
-        logfile = 'test.log'
+        logfile = Path(self.test_dir, 'test.log')
         logger = BaseLogger(logfile)
 
         # Set the worker ID
@@ -154,7 +154,8 @@ class LogTestCase(unittest.TestCase):
         self.assertEqual(logger.worker_id, worker_id)
 
         # Assert that the log file is updated with the worker ID
-        expected_logfile = f"{os.path.splitext(logfile)[0]}_{worker_id}{os.path.splitext(logfile)[1]}"
+        
+        expected_logfile = logfile.with_stem(f"{logfile.stem}_{worker_id}")
         self.assertEqual(logger.logfile, expected_logfile)
 
         # Close the logger
@@ -165,25 +166,20 @@ class LogTestCase(unittest.TestCase):
         # Create a list to store the log file paths
         log_files = []
 
-        def worker(worker_id):
-            # Create a unique log file for each worker within the test directory
-            logfile = os.path.join(self.test_dir, f"worker_{worker_id}.log")
-            log_files.append(logfile)
+        def worker(worker_id, logger: BaseLogger):
 
-            # Create a BaseLogger instance for the worker
-            logger = BaseLogger(logfile)
-
+            logger.set_worker_id(worker_id)
             # Log a message with the worker ID
             logger.log(f"Worker {worker_id} message")
 
-            # Close the logger
-            logger.close()
-
         # Create multiple worker processes
-        num_workers = 4
+        logfile = Path(self.test_dir, f"logging.log")
+        # Create a BaseLogger instance for the workers
+        logger = BaseLogger(logfile)
+        num_workers = 2
         processes = []
         for i in range(num_workers):
-            process = multiprocessing.Process(target=worker, args=(i,))
+            process = multiprocessing.Process(target=worker, args=(i,logger))
             processes.append(process)
 
         # Start the worker processes
@@ -195,14 +191,16 @@ class LogTestCase(unittest.TestCase):
             process.join()
 
         # Assert that the log files were created for each worker within the test directory
-        for logfile in log_files:
-            self.assertTrue(os.path.exists(logfile))
+        worker_logfiles = [logfile.with_stem(f"{logfile.stem}_{i}") for i in range(num_workers)]
+        for logfile in worker_logfiles:
+            self.assertTrue(logfile.exists())
 
-        # Assert that the log files are not empty
-        for logfile in log_files:
+        # Assert that the log contain worker-specific messages
+        expected_worker_messages = [f"Worker {i} message" for i in range(num_workers)]
+        for logfile, expected_message in zip(worker_logfiles, expected_worker_messages):
             with open(logfile, 'r') as f:
-                log_contents = f.read()
-                self.assertNotEqual(log_contents, '')
+                log_contents = f.read().strip()
+                self.assertTrue(log_contents.endswith(expected_message), f"{log_contents} doesnt endswith {expected_message}")
 
     def test_aggregate_logs(self):
         # Create temporary log files within the test directory
@@ -228,6 +226,38 @@ class LogTestCase(unittest.TestCase):
             expected_log_contents = sorted(log_contents)  # Sort the log_contents list
             self.assertTrue(all([entry.endswith(msg) for entry, msg in zip(expected_log_contents, aggregated_log_contents)]))
 
+
+# class TestLoggerContextManager(unittest.TestCase):
+#     def test_logger_context_manager(self):
+#         # Set up the test
+#         num_workers = 2
+        
+#         target_function = MagicMock()
+#         def target_function(logger):
+#             logger.set_worker_id()
+            
+        
+#         logger = BaseLogger('test.log')
+
+#         # Call the logger context manager function
+#         log_files = logger_context_manager(target_function,logger, num_workers=num_workers, master_logfile=logger.logfile)
+
+#         try:
+#             # Check that the log files are created and contain the expected messages
+#             for worker_id in range(num_workers):
+#                 log_file = log_files[worker_id]
+#                 self.assertTrue(log_file.exists())
+
+#                 with open(log_file, "r") as file:
+#                     log_contents = file.read()
+#                     self.assertIn("Test message", log_contents)
+#         finally:
+#             # Clean up the test
+#             for log_file in log_files:
+#                 log_file.unlink()
+
+if __name__ == "__main__":
+    unittest.main()
 
 if __name__ == '__main__':
     unittest.main()

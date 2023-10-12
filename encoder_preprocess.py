@@ -1,8 +1,9 @@
-from encoder.preprocess import preprocess_allinthemind, preprocess_librispeech, preprocess_voxceleb1, preprocess_voxceleb2
+from encoder.preprocess import preprocess_allinthemind, preprocess_librispeech, preprocess_lynnemalcolm, preprocess_voxceleb1, preprocess_voxceleb2
 from utils.argutils import print_args
 from pathlib import Path
 import argparse
 
+# python encoder_preprocess.py /mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/datasets --datasets lynnemalcolm
 
 if __name__ == "__main__":
     class MyFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
@@ -64,7 +65,8 @@ if __name__ == "__main__":
         # "librispeech_other": preprocess_librispeech,
         # "voxceleb1": preprocess_voxceleb1,
         # "voxceleb2": preprocess_voxceleb2,
-        "AllInTheMind": preprocess_allinthemind
+        "AllInTheMind": preprocess_allinthemind,
+        "lynnemalcolm": preprocess_lynnemalcolm
     }
     args = vars(args)
     for dataset in args.pop("datasets"):

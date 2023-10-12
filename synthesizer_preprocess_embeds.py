@@ -3,6 +3,7 @@ from utils.argutils import print_args
 from pathlib import Path
 import argparse
 
+# /home/sam/anaconda3/envs/rtvc/bin/python /mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/synthesizer_preprocess_embeds.py /mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/datasets/SV2TTS/synthesizer -e /mnt/c/Users/ssch7/repos/mums-voice/saved_models/pretrained/encoder.pt
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

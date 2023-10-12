@@ -1,3 +1,4 @@
+from typing import Optional
 from encoder.params_data import *
 from encoder.model import SpeakerEncoder
 from encoder.audio import preprocess_wav   # We want to expose this function from here
@@ -6,6 +7,8 @@ from encoder import audio
 from pathlib import Path
 import numpy as np
 import torch
+
+from logging_c import BaseLogger
 
 _model = None # type: SpeakerEncoder
 _device = None # type: torch.device
@@ -107,7 +110,7 @@ def compute_partial_slices(n_samples, partial_utterance_n_frames=partials_n_fram
     return wav_slices, mel_slices
 
 
-def embed_utterance(wav, using_partials=True, return_partials=False, **kwargs):
+def embed_utterance(wav, using_partials=True, return_partials=False, logger: Optional[BaseLogger] = None, **kwargs):
     """
     Computes an embedding for a single utterance.
 
@@ -128,6 +131,7 @@ def embed_utterance(wav, using_partials=True, return_partials=False, **kwargs):
     """
     # Process the entire utterance if not using partials
     if not using_partials:
+        if logger: logger.log("Process the entire utterance")
         frames = audio.wav_to_mel_spectrogram(wav)
         embed = embed_frames_batch(frames[None, ...])[0]
         if return_partials:
@@ -135,17 +139,22 @@ def embed_utterance(wav, using_partials=True, return_partials=False, **kwargs):
         return embed
 
     # Compute where to split the utterance into partials and pad if necessary
+    if logger: logger.log("Compute where to split the utterance into partials and pad if necessary")
     wave_slices, mel_slices = compute_partial_slices(len(wav), **kwargs)
     max_wave_length = wave_slices[-1].stop
     if max_wave_length >= len(wav):
         wav = np.pad(wav, (0, max_wave_length - len(wav)), "constant")
 
     # Split the utterance into partials
+    if logger: logger.log("Split the utterance into frames")
     frames = audio.wav_to_mel_spectrogram(wav)
+    if logger: logger.log("Split the frames into partials")
     frames_batch = np.array([frames[s] for s in mel_slices])
     partial_embeds = embed_frames_batch(frames_batch)
+    # partial_embeds = np.ones((2,10))
 
     # Compute the utterance embedding from the partial embeddings
+    if logger: logger.log("Compute the utterance embedding from the partial embeddings")
     raw_embed = np.mean(partial_embeds, axis=0)
     embed = raw_embed / np.linalg.norm(raw_embed, 2)
 

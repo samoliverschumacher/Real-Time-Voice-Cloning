@@ -96,7 +96,7 @@ second_dataset_group_name
 train.txt
 
 `utterance_1.alignment.txt`;
-<wav_filename> "<comma separated words>" "<comma separated end_times>"
+"<wav_filename> "<comma separated words>" "<comma separated end_times>"
 
 
 Given the below metadata in json file below;
@@ -126,3 +126,11 @@ Example;
 "filename" "PEOPLE,ARE" "0.34,0.60"
 
 Use python to write the function
+
+
+# The dataset
+
+Use below to count number of space-separated words in each sample;
+```bash
+awk '{sum += NF} END {print sum / NR}' "/mnt/c/Users/ssch7/repos/Real-Time-Voice-Cloning/datasets/LibriSpeech/test-clean/61/70968/61-70968.trans.txt"
+```
